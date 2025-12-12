@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Input, Button, Card, CardBody, Select, SelectItem, Spinner } from "@nextui-org/react";
 import api from '../api'; 
 import { useNavigate } from 'react-router-dom';
-import WebApp from '@twa-dev/sdk'; // <-- Важная штука для связи с Телегой
+import WebApp from '@twa-dev/sdk';
 
 const GENDER_OPTIONS = [
   { key: "male", label: "Мужской" },
@@ -26,58 +26,70 @@ const GOAL_OPTIONS = [
 export default function Onboarding() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true); // Состояние проверки входа
+  const [checkingAuth, setCheckingAuth] = useState(true);
   
   const [formData, setFormData] = useState({
-    telegram_id: 0, // Пока 0, заменим на реальный
+    telegram_id: 0,
     first_name: "",
     username: "",
     birth_date: "",
     gender: "male",
-    weight: 70,
-    height: 175,
+    weight: 0,
+    height: 0,
     activity_level: "sedentary",
     target_goal: "loss", 
-    target_weight: 65,   
+    target_weight: 0,   
   });
 
-  // 1. ПРИ ЗАГРУЗКЕ: Узнаем, кто открыл приложение
+  // 1. ПРИ ЗАГРУЗКЕ: Проверка пользователя
   useEffect(() => {
     const initAuth = async () => {
-        // Проверяем, запущены ли мы внутри Телеграма
+        // Проверяем, в Телеграме ли мы
         if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
-            const user = WebApp.initDataUnsafe.user;
-            console.log("👤 Telegram User:", user);
+            const tgUser = WebApp.initDataUnsafe.user;
+            console.log("👤 Telegram User:", tgUser);
 
-            // Обновляем форму реальными данными
+            // Сразу заполняем базовые данные из Телеграма
             setFormData(prev => ({
                 ...prev,
-                telegram_id: user.id,
-                first_name: user.first_name || "",
-                username: user.username || "",
+                telegram_id: tgUser.id,
+                first_name: tgUser.first_name || "",
+                username: tgUser.username || "",
             }));
 
-            // 2. Спрашиваем сервер: "Этот юзер уже есть в базе?"
+            // Спрашиваем сервер: "Знаешь этого парня?"
             try {
-                // Используем /daily-stats как проверку (если юзера нет, вернет ошибку)
-                const res = await api.get(`/api/daily-stats?telegram_id=${user.id}`);
+                // Используем daily-stats как способ получить профиль
+                const res = await api.get(`/api/daily-stats?telegram_id=${tgUser.id}`);
                 
                 if (res.data && res.data.user) {
-                    console.log("✅ Юзер найден! Авто-вход.");
-                    localStorage.setItem('user_data', JSON.stringify(res.data.user));
-                    navigate('/home'); // СРАЗУ НА ГЛАВНУЮ
-                    return; 
+                    const dbUser = res.data.user;
+                    
+                    // 🔥 ГЛАВНАЯ ПРОВЕРКА:
+                    // Пускаем внутрь только если Вес, Рост и Дата Рождения заполнены
+                    if (dbUser.weight > 0 && dbUser.height > 0 && dbUser.birth_date) {
+                        console.log("✅ Анкета полная. Авто-вход.");
+                        localStorage.setItem('user_data', JSON.stringify(dbUser));
+                        navigate('/home');
+                        return;
+                    } else {
+                        console.log("📝 Юзер есть, но анкета не полная. Режим редактирования.");
+                        // Подставляем то, что уже есть в базе, чтобы не вводить заново
+                        setFormData(prev => ({
+                            ...prev,
+                            ...dbUser, // Перезаписываем поля данными из базы
+                            telegram_id: tgUser.id // На всякий случай держим актуальный ID
+                        }));
+                    }
                 }
             } catch (e) {
-                console.log("🆕 Юзер не найден, показываем регистрацию.");
+                console.log("🆕 Юзер не найден, показываем чистую анкету.");
             }
         } else {
-            console.log("⚠️ Приложение открыто не в Telegram (или локально)");
-            // Для тестов на компе оставим фейковый ID
+            console.log("⚠️ Запуск вне Telegram (Dev Mode)");
             setFormData(prev => ({ ...prev, telegram_id: Date.now() }));
         }
         
-        // Убираем спиннер загрузки
         setCheckingAuth(false);
     };
 
@@ -85,28 +97,35 @@ export default function Onboarding() {
   }, []);
 
   const handleSubmit = async () => {
-    if (!formData.first_name || !formData.birth_date) return alert("Заполни все поля!");
+    // Простая валидация
+    if (!formData.first_name || !formData.birth_date || !formData.weight || !formData.height) {
+        return alert("Пожалуйста, заполни все поля (Дата, Вес, Рост)!");
+    }
 
     setLoading(true);
     try {
+      // Отправляем на сервер
       const response = await api.post('/api/sync-user', { userData: formData });
+      
       console.log("Успех!", response.data);
       localStorage.setItem('user_data', JSON.stringify(response.data.user));
+      
+      // Идем домой
       navigate('/home'); 
+
     } catch (error: any) {
       console.error(error);
       const msg = error.response?.data?.error || error.message;
-      alert(`Ошибка: ${msg}`);
+      alert(`Ошибка сохранения: ${msg}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Пока проверяем юзера - показываем красивую загрузку
   if (checkingAuth) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-blue-50">
-              <Spinner size="lg" label="Ищем тебя в базе..." color="primary" />
+              <Spinner size="lg" label="Синхронизация..." color="primary" />
           </div>
       );
   }
@@ -119,8 +138,20 @@ export default function Onboarding() {
 
         <Card className="shadow-xl border border-blue-100">
           <CardBody className="gap-4 p-6">
-            <Input label="Имя" value={formData.first_name} onValueChange={(v) => setFormData({...formData, first_name: v})} variant="bordered" />
-            <Input type="date" label="Дата рождения" placeholder=" " value={formData.birth_date} onValueChange={(v) => setFormData({...formData, birth_date: v})} variant="bordered" />
+            <Input 
+                label="Имя" 
+                value={formData.first_name} 
+                onValueChange={(v) => setFormData({...formData, first_name: v})} 
+                variant="bordered" 
+            />
+            <Input 
+                type="date" 
+                label="Дата рождения" 
+                placeholder=" " 
+                value={formData.birth_date} 
+                onValueChange={(v) => setFormData({...formData, birth_date: v})} 
+                variant="bordered" 
+            />
             
             <Select label="Пол" selectedKeys={[formData.gender]} onChange={(e) => setFormData({...formData, gender: e.target.value})} variant="bordered">
               {GENDER_OPTIONS.map((o) => <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>)}
