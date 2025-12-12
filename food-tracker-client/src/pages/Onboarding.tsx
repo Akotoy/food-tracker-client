@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Input, Button, Card, CardBody, Select, SelectItem } from "@nextui-org/react";
+import { useState, useEffect } from 'react';
+import { Input, Button, Card, CardBody, Select, SelectItem, Spinner } from "@nextui-org/react";
 import api from '../api'; 
 import { useNavigate } from 'react-router-dom';
+import WebApp from '@twa-dev/sdk'; // <-- Важная штука для связи с Телегой
 
 const GENDER_OPTIONS = [
   { key: "male", label: "Мужской" },
@@ -25,12 +26,12 @@ const GOAL_OPTIONS = [
 export default function Onboarding() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true); // Состояние проверки входа
   
   const [formData, setFormData] = useState({
-    // ИСПРАВЛЕНИЕ: Используем telegram_id вместо id
-    telegram_id: Date.now(), 
+    telegram_id: 0, // Пока 0, заменим на реальный
     first_name: "",
-    username: "user_" + Date.now(),
+    username: "",
     birth_date: "",
     gender: "male",
     weight: 70,
@@ -40,17 +41,58 @@ export default function Onboarding() {
     target_weight: 65,   
   });
 
+  // 1. ПРИ ЗАГРУЗКЕ: Узнаем, кто открыл приложение
+  useEffect(() => {
+    const initAuth = async () => {
+        // Проверяем, запущены ли мы внутри Телеграма
+        if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
+            const user = WebApp.initDataUnsafe.user;
+            console.log("👤 Telegram User:", user);
+
+            // Обновляем форму реальными данными
+            setFormData(prev => ({
+                ...prev,
+                telegram_id: user.id,
+                first_name: user.first_name || "",
+                username: user.username || "",
+            }));
+
+            // 2. Спрашиваем сервер: "Этот юзер уже есть в базе?"
+            try {
+                // Используем /daily-stats как проверку (если юзера нет, вернет ошибку)
+                const res = await api.get(`/api/daily-stats?telegram_id=${user.id}`);
+                
+                if (res.data && res.data.user) {
+                    console.log("✅ Юзер найден! Авто-вход.");
+                    localStorage.setItem('user_data', JSON.stringify(res.data.user));
+                    navigate('/home'); // СРАЗУ НА ГЛАВНУЮ
+                    return; 
+                }
+            } catch (e) {
+                console.log("🆕 Юзер не найден, показываем регистрацию.");
+            }
+        } else {
+            console.log("⚠️ Приложение открыто не в Telegram (или локально)");
+            // Для тестов на компе оставим фейковый ID
+            setFormData(prev => ({ ...prev, telegram_id: Date.now() }));
+        }
+        
+        // Убираем спиннер загрузки
+        setCheckingAuth(false);
+    };
+
+    initAuth();
+  }, []);
+
   const handleSubmit = async () => {
     if (!formData.first_name || !formData.birth_date) return alert("Заполни все поля!");
 
     setLoading(true);
     try {
       const response = await api.post('/api/sync-user', { userData: formData });
-      
       console.log("Успех!", response.data);
       localStorage.setItem('user_data', JSON.stringify(response.data.user));
       navigate('/home'); 
-
     } catch (error: any) {
       console.error(error);
       const msg = error.response?.data?.error || error.message;
@@ -60,11 +102,20 @@ export default function Onboarding() {
     }
   };
 
+  // Пока проверяем юзера - показываем красивую загрузку
+  if (checkingAuth) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-blue-50">
+              <Spinner size="lg" label="Ищем тебя в базе..." color="primary" />
+          </div>
+      );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white p-6 flex flex-col justify-center">
       <div className="max-w-md mx-auto w-full">
-        <h1 className="text-3xl font-bold text-center mb-2">Твоя цель 🎯</h1>
-        <p className="text-gray-500 text-center mb-6">Расскажи о себе и своих планах.</p>
+        <h1 className="text-3xl font-bold text-center mb-2">Привет, {formData.first_name}! 👋</h1>
+        <p className="text-gray-500 text-center mb-6">Давай настроим твой план питания.</p>
 
         <Card className="shadow-xl border border-blue-100">
           <CardBody className="gap-4 p-6">
