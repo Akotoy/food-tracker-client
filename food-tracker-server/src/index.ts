@@ -66,3 +66,4 @@ if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
     app.listen(PORT, () => {
         console.log(`🚀 HTTP Server running on http://localhost:${PORT}`);
     });
+}
