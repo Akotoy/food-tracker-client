@@ -1,6 +1,8 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install"
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "http://185.5.207.57:3000/api/:path*"
+    }
+  ]
 }
