@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { supabase, openai } from '../config/clients';
 import { calculateAge, calculateStreak, SYSTEM_PROMPT } from '../utils/common';
-import { checkOverlimit } from '../utils/notifications'; 
+import { checkOverlimit } from '../utils/notifications';
 
 const router = Router();
 
 // Настройка модели (используем стабильную gpt-4o)
-const AI_MODEL = "gpt-4o"; 
+const AI_MODEL = "gpt-4o";
 
 
 // 1. ПРОФИЛЬ И РЕГИСТРАЦИЯ
@@ -120,13 +120,13 @@ router.post('/weight', async (req, res) => {
         const { data: user } = await supabase.from('users').select('weight').eq('telegram_id', user_id).single();
         const newWeight = Math.round((user.weight + amount) * 10) / 10;
         await supabase.from('users').update({ weight: newWeight }).eq('telegram_id', user_id);
-        
+
         const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
         const { data: existingLog } = await supabase.from('weight_logs').select('id').eq('user_id', user_id).gte('created_at', todayStart.toISOString()).limit(1).single();
-        
+
         if (existingLog) await supabase.from('weight_logs').update({ weight: newWeight }).eq('id', existingLog.id);
         else await supabase.from('weight_logs').insert({ user_id, weight: newWeight });
-        
+
         res.json({ success: true, newWeight });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -159,7 +159,7 @@ router.post('/log-food', async (req, res) => {
         const { user_id, food } = req.body;
         const { data, error } = await supabase.from('food_logs').insert({ user_id, name: food.name, calories: food.calories, protein: food.protein, fats: food.fats, carbs: food.carbs, grade: food.grade, is_image_recognized: true }).select();
         if (error) throw error;
-        
+
         checkOverlimit(user_id, food.calories); // Уведомление
 
         res.json({ success: true, data });
@@ -167,15 +167,15 @@ router.post('/log-food', async (req, res) => {
 });
 
 // 8. УДАЛЕНИЕ И РЕДАКТИРОВАНИЕ
-router.delete('/log-food/:id', async (req, res) => { 
-    await supabase.from('food_logs').delete().eq('id', req.params.id); 
-    res.json({ success: true }); 
+router.delete('/log-food/:id', async (req, res) => {
+    await supabase.from('food_logs').delete().eq('id', req.params.id);
+    res.json({ success: true });
 });
 
-router.put('/log-food/:id', async (req, res) => { 
-    const { name, calories, protein, fats, carbs, weight_g } = req.body; 
-    await supabase.from('food_logs').update({ name, calories, protein, fats, carbs, weight_g }).eq('id', req.params.id); 
-    res.json({ success: true }); 
+router.put('/log-food/:id', async (req, res) => {
+    const { name, calories, protein, fats, carbs, weight_g } = req.body;
+    await supabase.from('food_logs').update({ name, calories, protein, fats, carbs, weight_g }).eq('id', req.params.id);
+    res.json({ success: true });
 });
 
 // 9. AI ЧАТ
@@ -185,13 +185,13 @@ router.post('/ai-chat', async (req, res) => {
         const { data: user } = await supabase.from('users').select('*').eq('telegram_id', user_id).single();
         const threeDaysAgo = new Date(); threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
         const { data: recentLogs } = await supabase.from('food_logs').select('name, calories, grade, created_at').eq('user_id', user_id).gte('created_at', threeDaysAgo.toISOString()).order('created_at', { ascending: false }).limit(20);
-        
+
         const foodContext = recentLogs?.map(l => `- ${l.name} (${l.calories}kcal, Grade: ${l.grade})`).join('\n') || "User hasn't logged food recently.";
-        
+
         const systemPrompt = `You are a friendly AI Nutritionist. User: ${user.first_name}, Goal: ${user.target_goal}. Recent Food: ${foodContext}. Answer in Russian.`;
 
         const completion = await openai.chat.completions.create({
-            model: AI_MODEL, 
+            model: AI_MODEL,
             messages: [{ role: "system", content: systemPrompt }, ...history, { role: "user", content: message }] as any
         });
 
@@ -205,8 +205,8 @@ router.get('/history-day', async (req, res) => {
         const telegram_id = Number(req.query.telegram_id);
         const dateStr = String(req.query.date);
         const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
-        const dayStart = new Date(dateStr); dayStart.setHours(0,0,0,0);
-        const dayEnd = new Date(dateStr); dayEnd.setHours(23,59,59,999);
+        const dayStart = new Date(dateStr); dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dateStr); dayEnd.setHours(23, 59, 59, 999);
         const { data: logs } = await supabase.from('food_logs').select('*').eq('user_id', telegram_id).gte('created_at', dayStart.toISOString()).lte('created_at', dayEnd.toISOString());
         const totals = logs?.reduce((acc: any, item: any) => ({ calories: acc.calories + (item.calories || 0), protein: acc.protein + (item.protein || 0), fats: acc.fats + (item.fats || 0), carbs: acc.carbs + (item.carbs || 0), }), { calories: 0, protein: 0, fats: 0, carbs: 0 });
         res.json({ totals, goals: { calories: user.daily_calories_goal, protein: user.daily_protein_goal, fats: user.daily_fats_goal, carbs: user.daily_carbs_goal } });
@@ -300,6 +300,110 @@ router.post('/daily-checkins', async (req, res) => {
             { user_id: telegram_id, date, did_live_workout, did_recorded_workout },
             { onConflict: 'user_id,date' }
         );
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
+// 13. МАРАФОНЫ
+router.post('/marathon/join', async (req, res) => {
+    try {
+        const { telegram_id, token, current_weight } = req.body;
+
+        // 1. Находим марафон по токену
+        const { data: marathon } = await supabase.from('marathons').select('*').eq('access_token', token).single();
+        if (!marathon) return res.status(404).json({ error: "Марафон с таким кодом не найден" });
+
+        // 2. Добавляем участника
+        const { error } = await supabase.from('marathon_participants').insert({
+            marathon_id: marathon.id,
+            user_id: telegram_id,
+            start_weight: current_weight
+        });
+
+        if (error) {
+            if (error.code === '23505') return res.status(400).json({ error: "Вы уже участвуете в этом марафоне" });
+            throw error;
+        }
+
+        res.json({ success: true, marathon });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.get('/marathon/:id/ladder', async (req, res) => {
+    try {
+        const marathon_id = req.params.id;
+
+        // Получаем участников
+        const { data: participants } = await supabase
+            .from('marathon_participants')
+            .select('user_id, start_weight, users(first_name, last_name, avatar_url, weight, target_weight)')
+            .eq('marathon_id', marathon_id);
+
+        if (!participants) return res.json([]);
+
+        // Считаем прогресс для каждого
+        const ladder = participants.map((p: any) => {
+            const start = p.start_weight;
+            const current = p.users.weight;
+            const target = p.users.target_weight;
+
+            // Прогресс: сколько скинул от того что нужно скинуть
+            // (Start - Current) / (Start - Target) * 100
+            let progress = 0;
+            if (start > target) { // Худеем
+                const totalToLose = start - target;
+                const lost = start - current;
+                progress = (lost / totalToLose) * 100;
+            } else if (start < target) { // Набираем
+                const totalToGain = target - start;
+                const gained = current - start;
+                progress = (gained / totalToGain) * 100;
+            }
+
+            return {
+                user: p.users,
+                progress: Math.min(Math.max(progress, 0), 100) // 0-100%
+            };
+        });
+
+        // Сортируем: у кого больше прогресс - тот выше
+        ladder.sort((a, b) => b.progress - a.progress);
+
+        res.json(ladder);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.post('/marathon/save-assessment', async (req, res) => {
+    try {
+        const { participant_id, type, answers } = req.body;
+        // Тут стоило бы найти participant_id по user_id и marathon_id, но пока доверимся фронту или упростим
+        // Для надежности лучше передавать user_id и marathon_id
+
+        // Предположим мы передаем user_id и marathon_id для поиска участника
+        const { user_id, marathon_id } = req.body;
+
+        const { data: participant } = await supabase.from('marathon_participants')
+            .select('id')
+            .eq('user_id', user_id)
+            .eq('marathon_id', marathon_id)
+            .single();
+
+        if (!participant) throw new Error("Participant not found");
+
+        const { error } = await supabase.from('marathon_assessments').insert({
+            participant_id: participant.id,
+            type,
+            answers
+        });
+
         if (error) throw error;
         res.json({ success: true });
     } catch (e: any) {
