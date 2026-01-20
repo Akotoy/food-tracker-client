@@ -4,7 +4,7 @@ import axios from 'axios';
 // Мы оставляем пустую строку, чтобы запрос шел на тот же домен (localhost:5173),
 // а Vite уже перекинет его на сервер.
 const api = axios.create({
-    baseURL: '' 
+    baseURL: 'http://185.5.207.57:3000' // Указываем точный адрес нашего сервера
 });
 
 export default api;

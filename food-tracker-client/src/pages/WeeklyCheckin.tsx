@@ -88,12 +88,12 @@ export default function WeeklyCheckin() {
                     <h2 className="font-bold text-lg mb-2">История замеров</h2>
                     {loading ? <Spinner /> : (
                         <Table aria-label="История замеров">
-                            <TableHeader>
+<TableHeader>
                                 <TableColumn>ДАТА</TableColumn>
                                 <TableColumn>ВЕС</TableColumn>
                                 <TableColumn>РАЗН.</TableColumn>
                                 <TableColumn>ТАЛИЯ</TableColumn>
-                                <TableColumn>РАЗН.</TableTableColumn>
+                                <TableColumn>РАЗН.</TableColumn> 
                             </TableHeader>
                             <TableBody emptyContent="Замеров пока нет">
                                 {history.map((item, index) => (
