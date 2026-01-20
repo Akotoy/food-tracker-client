@@ -1,10 +1,12 @@
 import axios from 'axios';
 
-// Мы НЕ указываем http://localhost:3000. 
-// Мы оставляем пустую строку, чтобы запрос шел на тот же домен (localhost:5173),
-// а Vite уже перекинет его на сервер.
+// API базовый URL из переменной окружения
+// При разработке используется локальный сервер (http://localhost:3000)
+// При деплое на Vercel используется значение из переменной VITE_API_URL
+const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 const api = axios.create({
-    baseURL: 'http://185.5.207.57:3000' // Указываем точный адрес нашего сервера
+    baseURL: apiUrl
 });
 
 export default api;

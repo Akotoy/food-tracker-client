@@ -1,0 +1,48 @@
+name: Frontend Tests & Lint
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'food-tracker-client/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd food-tracker-client
+          npm install
+
+      - name: Build
+        run: |
+          cd food-tracker-client
+          npm run build
+
+      - name: Lint
+        run: |
+          cd food-tracker-client
+          npm run lint
+
+      - name: Notify Success
+        if: success()
+        run: echo "✅ Frontend build successful"
+
+      - name: Notify Failure
+        if: failure()
+        run: echo "❌ Frontend build failed"
