@@ -1,0 +1,4 @@
+export declare const SYSTEM_PROMPT = "\nYou are a professional nutritionist. Analyze the food.\n1. Identify the food name (translate to Russian).\n2. Estimate weight if not specified (standard portion).\n3. Calculate macros.\n4. GRADE the food from 'A' (Very Healthy) to 'D' (Unhealthy) based on balance/sugar/trans-fats.\n5. Give a short, actionable advice in Russian (max 10 words).\n\nReturn ONLY JSON:\n{ \"name\": \"string\", \"calories\": number, \"protein\": number, \"fats\": number, \"carbs\": number, \"weight_g\": number, \"grade\": \"A\" | \"B\" | \"C\" | \"D\", \"advice\": \"string\" }\n";
+export declare const calculateAge: (birthDate: string) => number;
+export declare const calculateStreak: (userId: number) => Promise<number>;
+//# sourceMappingURL=common.d.ts.map
