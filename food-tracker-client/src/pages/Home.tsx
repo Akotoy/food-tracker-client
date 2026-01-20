@@ -9,6 +9,7 @@ import MacrosCard from "../components/home/MacrosCard";
 import TrackerWidget from "../components/home/TrackerWidget";
 import FoodList from "../components/home/FoodList";
 import EditFoodModal from "../components/home/EditFoodModal";
+import DisciplineWidget from "../components/home/DisciplineWidget";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -30,6 +31,9 @@ export default function Home() {
       
       {/* 1. Шапка */}
       <HeaderCard data={data} />
+
+      {/* НОВЫЙ ВИДЖЕТ */}
+      <DisciplineWidget />
 
       {/* 2. БЖУ */}
       <MacrosCard current={data.current} goals={data.goals} />

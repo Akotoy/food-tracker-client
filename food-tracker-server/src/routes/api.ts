@@ -240,4 +240,71 @@ router.get('/measurements', async (req, res) => {
     }
 });
 
+/ 12. ИНДЕКС ДИСЦИПЛИНЫ
+router.get('/discipline-index', async (req, res) => {
+    try {
+        const telegram_id = Number(req.query.telegram_id);
+        let index = 0;
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStr = todayStart.toISOString().split('T')[0];
+
+        // 1. Проверка еды (+40 баллов)
+        const { count: foodCount } = await supabase.from('food_logs').select('*', { count: 'exact', head: true })
+            .eq('user_id', telegram_id).gte('created_at', todayStart.toISOString());
+        const food_logged = foodCount > 0;
+        if (food_logged) index += 40;
+
+        // 2. Проверка веса (+20 баллов)
+        const { count: weightCount } = await supabase.from('weight_logs').select('*', { count: 'exact', head: true })
+            .eq('user_id', telegram_id).gte('created_at', todayStart.toISOString());
+        const weight_logged = weightCount > 0;
+        if (weight_logged) index += 20;
+
+        // 3. Проверка воды (+20 баллов)
+        const { data: user } = await supabase.from('users').select('daily_water_goal').eq('telegram_id', telegram_id).single();
+        const waterGoal = user?.daily_water_goal || 2000;
+        const { data: waterLogs } = await supabase.from('water_logs').select('amount_ml')
+            .eq('user_id', telegram_id).gte('created_at', todayStart.toISOString());
+        const waterTotal = waterLogs?.reduce((sum, item) => sum + item.amount_ml, 0) || 0;
+        const water_goal_met = waterTotal >= waterGoal * 0.8;
+        if (water_goal_met) index += 20;
+
+        // 4. Проверка тренировки (+20 баллов)
+        const { data: checkin } = await supabase.from('daily_checkins').select('*')
+            .eq('user_id', telegram_id).eq('date', todayStr).single();
+        const workout_done = checkin?.did_live_workout || checkin?.did_recorded_workout;
+        if (workout_done) index += 20;
+
+        // Определяем уровень и статус
+        let level = 'red';
+        let status_text = 'Нужно взять себя в руки';
+        if (index > 40) { level = 'yellow'; status_text = 'Есть над чем поработать'; }
+        if (index > 80) { level = 'green'; status_text = 'Отличный результат!'; }
+
+        res.json({
+            index, level, status_text,
+            checklist: { food_logged, weight_logged, water_goal_met, workout_done }
+        });
+
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.post('/daily-checkins', async (req, res) => {
+    try {
+        const { telegram_id, date, did_live_workout, did_recorded_workout } = req.body;
+        const { error } = await supabase.from('daily_checkins').upsert(
+            { user_id: telegram_id, date, did_live_workout, did_recorded_workout },
+            { onConflict: 'user_id,date' }
+        );
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;
