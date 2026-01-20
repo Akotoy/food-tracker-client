@@ -9,51 +9,72 @@ const router = Router();
 const AI_MODEL = "gpt-4o"; 
 
 
-// 1. ПРОФИЛЬ (БЕЗОПАСНАЯ ВЕРСИЯ)
+// 1. ПРОФИЛЬ И РЕГИСТРАЦИЯ
 router.post('/sync-user', async (req, res) => {
     try {
         const { userData } = req.body;
-        
-        // ВАЖНО: Удаляем поле 'id' из userData, чтобы не ломать UUID в базе
-        // Мы используем деструктуризацию: id уходит в никуда, остальное в cleanData
-        const { id, ...cleanData } = userData; 
+        const telegramId = userData.telegram_id;
 
-        // Если telegram_id не пришел, пробуем взять его из id (для обратной совместимости), иначе ошибка
-        const telegramId = cleanData.telegram_id || id;
-        
-        if (!telegramId) return res.status(400).json({ error: "No telegram_id provided" });
+        if (!telegramId) {
+            return res.status(400).json({ error: "No telegram_id provided" });
+        }
 
-        let age = cleanData.age || 25;
-        if (cleanData.birth_date) age = calculateAge(cleanData.birth_date);
-        
-        // Расчет BMR
-        let bmr = cleanData.gender === 'male' 
-            ? 88.36 + (13.4 * cleanData.weight) + (4.8 * cleanData.height) - (5.7 * age)
-            : 447.6 + (9.2 * cleanData.weight) + (3.1 * cleanData.height) - (4.3 * age);
-        
-        let goalMultiplier = 1.0;
-        if (cleanData.target_goal === 'loss') goalMultiplier = 0.85;
-        if (cleanData.target_goal === 'gain') goalMultiplier = 1.15;
-        
-        const activityMultipliers: any = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
-        const dailyCalories = Math.round(Math.round(bmr * (activityMultipliers[cleanData.activity_level] || 1.2)) * goalMultiplier);
-
-        const { data, error } = await supabase.from('users').upsert({
+        // Данные для сохранения в базу
+        const dataToSave: any = {
             telegram_id: telegramId,
-            ...cleanData, // Используем очищенные данные (без id)
-            age,
-            daily_calories_goal: dailyCalories,
-            daily_protein_goal: Math.round((dailyCalories * 0.3) / 4),
-            daily_fats_goal: Math.round((dailyCalories * 0.3) / 9),
-            daily_carbs_goal: Math.round((dailyCalories * 0.4) / 4),
-        }, { onConflict: 'telegram_id' })
-        .select();
+            first_name: userData.first_name,
+            last_name: userData.last_name,
+            username: userData.username,
+            gender: userData.gender,
+            age: Number(userData.age),
+            height: Number(userData.height),
+            weight: Number(userData.weight),
+            chest_cm: Number(userData.chest_cm),
+            waist_cm: Number(userData.waist_cm),
+            hips_cm: Number(userData.hips_cm),
+            target_weight: Number(userData.target_weight),
+            secondary_goals: userData.secondary_goals, // это массив
+            is_terms_accepted: userData.is_terms_accepted,
+            avatar_url: userData.avatar_url,
+            // Пока оставляем старые поля для обратной совместимости
+            activity_level: userData.activity_level || 'sedentary',
+            target_goal: userData.target_goal || 'loss'
+        };
+
+        // Расчет BMR, если есть все данные
+        if (userData.weight && userData.height && userData.age && userData.gender) {
+            const age = Number(userData.age);
+            const weight = Number(userData.weight);
+            const height = Number(userData.height);
+
+            let bmr = userData.gender === 'male'
+                ? 88.36 + (13.4 * weight) + (4.8 * height) - (5.7 * age)
+                : 447.6 + (9.2 * weight) + (3.1 * height) - (4.3 * age);
+
+            // Упрощенный расчет цели, т.к. детальных полей пока нет
+            let goalMultiplier = 1.0;
+            if (weight > Number(userData.target_weight)) goalMultiplier = 0.85; // Если цель ниже текущего веса - худеем
+            if (weight < Number(userData.target_weight)) goalMultiplier = 1.15; // Если выше - набираем
+
+            const activityMultipliers: any = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
+            const dailyCalories = Math.round(bmr * (activityMultipliers[dataToSave.activity_level] || 1.2) * goalMultiplier);
+
+            dataToSave.daily_calories_goal = dailyCalories;
+            dataToSave.daily_protein_goal = Math.round((dailyCalories * 0.3) / 4);
+            dataToSave.daily_fats_goal = Math.round((dailyCalories * 0.3) / 9);
+            dataToSave.daily_carbs_goal = Math.round((dailyCalories * 0.4) / 4);
+        }
+
+        const { data, error } = await supabase.from('users')
+            .upsert(dataToSave, { onConflict: 'telegram_id' })
+            .select();
 
         if (error) throw error;
+
         res.json({ success: true, user: data[0] });
-    } catch (e: any) { 
+    } catch (e: any) {
         console.error("Sync Error:", e);
-        res.status(500).json({ error: e.message }); 
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -190,6 +211,33 @@ router.get('/history-day', async (req, res) => {
         const totals = logs?.reduce((acc: any, item: any) => ({ calories: acc.calories + (item.calories || 0), protein: acc.protein + (item.protein || 0), fats: acc.fats + (item.fats || 0), carbs: acc.carbs + (item.carbs || 0), }), { calories: 0, protein: 0, fats: 0, carbs: 0 });
         res.json({ totals, goals: { calories: user.daily_calories_goal, protein: user.daily_protein_goal, fats: user.daily_fats_goal, carbs: user.daily_carbs_goal } });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+router.post('/measurements', async (req, res) => {
+    try {
+        const { user_id, measurements } = req.body;
+        // Добавляем user_id в объект с замерами
+        const dataToInsert = { user_id, ...measurements };
+        const { error } = await supabase.from('weekly_measurements').insert(dataToInsert);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.get('/measurements', async (req, res) => {
+    try {
+        const telegram_id = Number(req.query.telegram_id);
+        const { data, error } = await supabase
+            .from('weekly_measurements')
+            .select('*')
+            .eq('user_id', telegram_id)
+            .order('created_at', { ascending: true }); // Сортируем от старых к новым
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 export default router;

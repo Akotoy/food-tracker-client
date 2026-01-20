@@ -8,7 +8,7 @@ import { setupCronJobs } from './utils/notifications';
 
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: '*' })); // Разрешаем запросы с любого источника
 app.use(express.json({ limit: '50mb' }));
 
 // 1. Подключаем API

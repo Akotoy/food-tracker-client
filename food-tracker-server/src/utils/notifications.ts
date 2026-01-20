@@ -51,8 +51,37 @@ const runStreakSaver = async () => {
     }
 };
 
+// 3. ✍️ ЕЖЕНЕДЕЛЬНОЕ НАПОМИНАНИЕ О ЗАМЕРАХ (Cron)
+const runWeeklyReminder = async () => {
+    console.log("⏰ Cron: Отправка напоминаний о замерах...");
+    const { data: users } = await supabase.from('users').select('telegram_id, first_name');
+    if (!users) return;
+
+    for (const user of users) {
+        try {
+            // ВАЖНО: Замени домен на свой!
+            const webAppUrl = `https://ЗАМЕНИ_НА_ТВОЙ_ДОМЕН/check-in`;
+
+            await bot.telegram.sendMessage(
+                user.telegram_id, 
+                `Доброе утро, ${user.first_name}! ☀️\n\nСегодня понедельник — время для еженедельного замера. Это поможет нам отследить твой прогресс!\n\nНажми кнопку ниже, чтобы внести данные.`,
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '✍️ Внести замеры', web_app: { url: webAppUrl } }]
+                        ]
+                    }
+                }
+            );
+        } catch (e) {
+            // Ошибки могут быть, если пользователь заблокировал бота, это нормально
+        }
+    }
+};
+
 // Функция запуска таймеров
 export const setupCronJobs = () => {
-    cron.schedule('0 18 * * *', runStreakSaver); // 18:00 UTC = 21:00 MSK
+    cron.schedule('0 18 * * *', runStreakSaver);      // Каждый день в 18:00 UTC
+    cron.schedule('0 8 * * 1', runWeeklyReminder);   // Каждый понедельник в 8:00 UTC
     console.log("✅ Cron Jobs запущены");
 };
