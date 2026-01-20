@@ -66,10 +66,10 @@ export default function DisciplineWidget() {
                                 <p className="text-xs text-gray-500">Ваш показатель за сегодня</p>
                             </div>
                         </div>
-                        <div className="flex flex-col gap-2 mt-4">
+<div className="flex flex-col gap-2 mt-4">
                             <Checkbox isSelected={data.checklist.food_logged} isReadOnly color="success">Еда внесена</Checkbox>
                             <Checkbox isSelected={data.checklist.weight_logged} isReadOnly color="success">Вес отмечен</Checkbox>
-                            <Checkbox isSelected={data.checklist.water_goal_met} isReadOnly color="success">Норма воды >80%</Checkbox>
+                            <Checkbox isSelected={data.checklist.water_goal_met} isReadOnly color="success">{'Норма воды >80%'}</Checkbox>
                             <Checkbox 
                                 isSelected={data.checklist.workout_done} 
                                 onValueChange={(v) => handleWorkoutCheck('did_recorded_workout', v)}
